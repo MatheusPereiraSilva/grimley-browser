@@ -1,0 +1,10 @@
+[package]
+name = "grimley_browser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wry = "0.40"
+tao = "0.26"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
