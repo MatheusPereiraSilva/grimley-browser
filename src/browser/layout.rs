@@ -6,7 +6,7 @@ use wry::{
 
 const TOOLBAR_HEIGHT: f64 = 96.0;
 
-pub fn toolbar_bounds(window: &Window) -> Rect {
+pub(crate) fn toolbar_bounds(window: &Window) -> Rect {
     let size = window.inner_size().to_logical::<f64>(window.scale_factor());
 
     Rect {
@@ -15,7 +15,7 @@ pub fn toolbar_bounds(window: &Window) -> Rect {
     }
 }
 
-pub fn content_bounds(window: &Window) -> Rect {
+pub(crate) fn content_bounds(window: &Window) -> Rect {
     let size = window.inner_size().to_logical::<f64>(window.scale_factor());
     let content_height = (size.height - TOOLBAR_HEIGHT).max(0.0);
 

@@ -132,12 +132,21 @@
         .action-link.primary { background: var(--accent); color: white; }
         .action-link.secondary { background: white; color: var(--text); border: 1px solid var(--border); }
         .viewer-body { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+        .status-card,
         .error-card {
             max-width: 720px;
             margin: 40px auto;
             padding: 24px;
-            border: 1px solid rgba(220, 38, 38, 0.18);
             border-radius: 20px;
+        }
+        .status-card {
+            border: 1px solid rgba(37, 99, 235, 0.18);
+            background: #f8fbff;
+        }
+        .status-card h2 { margin: 0 0 10px; font-size: 24px; }
+        .status-card p { margin: 0; color: #334155; line-height: 1.6; }
+        .error-card {
+            border: 1px solid rgba(220, 38, 38, 0.18);
             background: #fff7f7;
         }
         .error-card h2 { margin: 0 0 10px; font-size: 24px; }
@@ -285,8 +294,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         const pdfUrl = document.body.dataset.pdfUrl || '';
-        const pdfDataBase64 = '__GRIMLEY_PDF_DATA__';
-        const initialError = '__GRIMLEY_PDF_ERROR__';
+        const pdfAssetUrl = '__GRIMLEY_PDF_ASSET_URL__';
         const storageKey = 'grimley-pdf-annotations-v2:' + pdfUrl;
         const pagesContainer = document.getElementById('pages');
         const errorSlot = document.getElementById('error-slot');
@@ -307,9 +315,14 @@
         };
 
         const pageShells = new Map();
+        let pageObserver = null;
         let annotations = loadAnnotations();
         let mode = 'navigate';
         let selectedId = null;
+
+        function showLoading(message) {
+            errorSlot.innerHTML = '<div class="status-card"><h2>Carregando PDF</h2><p>' + escapeHtml(message) + '</p></div>';
+        }
 
         function showError(message) {
             errorSlot.innerHTML = '<div class="error-card"><h2>PDF indisponivel</h2><p>' + escapeHtml(message) + '</p><p>Voce ainda pode usar "Abrir original" para verificar o arquivo.</p></div>';
@@ -578,23 +591,155 @@
             });
         }
 
-        function decodePdfData() {
-            const binary = window.atob(pdfDataBase64);
-            const bytes = new Uint8Array(binary.length);
-            for (let index = 0; index < binary.length; index += 1) {
-                bytes[index] = binary.charCodeAt(index);
-            }
-            return bytes;
+        function yieldToUi() {
+            return new Promise(function(resolve) {
+                window.setTimeout(resolve, 0);
+            });
         }
 
-        async function renderPdf() {
-            if (initialError) {
-                showError(initialError);
+        function ensurePageObserver() {
+            if (pageObserver) {
                 return;
             }
 
-            if (!pdfDataBase64) {
-                showError('Os bytes do PDF nao foram carregados.');
+            pageObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (!entry.isIntersecting) {
+                        return;
+                    }
+
+                    queuePageRender(Number(entry.target.dataset.pageNumber));
+                });
+            }, {
+                root: document.getElementById('viewer-body'),
+                rootMargin: '900px 0px',
+                threshold: 0.01
+            });
+
+            pageShells.forEach(function(shell) {
+                pageObserver.observe(shell.root);
+            });
+        }
+
+        function createPageShell(pageNumber, page, viewport) {
+            const root = document.createElement('section');
+            root.className = 'pdf-page';
+            root.dataset.pageNumber = String(pageNumber);
+            root.style.width = viewport.width + 'px';
+            root.style.height = viewport.height + 'px';
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'pdf-canvas';
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.width = viewport.width + 'px';
+            canvas.style.height = viewport.height + 'px';
+
+            const textLayer = document.createElement('div');
+            textLayer.className = 'textLayer';
+
+            const overlay = document.createElement('div');
+            overlay.className = 'page-overlay';
+
+            root.appendChild(canvas);
+            root.appendChild(textLayer);
+            root.appendChild(overlay);
+            pagesContainer.appendChild(root);
+
+            const shell = {
+                root: root,
+                overlay: overlay,
+                textLayer: textLayer,
+                canvas: canvas,
+                page: page,
+                viewport: viewport,
+                rendered: false,
+                rendering: false
+            };
+
+            pageShells.set(pageNumber, shell);
+
+            if (pageObserver) {
+                pageObserver.observe(root);
+            }
+
+            root.addEventListener('click', function(event) {
+                if (mode !== 'note') {
+                    return;
+                }
+
+                const bounds = root.getBoundingClientRect();
+                const note = {
+                    id: createId('note'),
+                    type: 'note',
+                    page: pageNumber,
+                    x: (event.clientX - bounds.left) / bounds.width,
+                    y: (event.clientY - bounds.top) / bounds.height,
+                    text: ''
+                };
+                annotations.push(note);
+                saveAnnotations();
+                focusAnnotation(note.id, { focusEditor: true });
+            });
+        }
+
+        async function renderPageShell(pageNumber) {
+            const shell = pageShells.get(pageNumber);
+            if (!shell || shell.rendered || shell.rendering) {
+                return;
+            }
+
+            shell.rendering = true;
+
+            try {
+                await shell.page.render({
+                    canvasContext: shell.canvas.getContext('2d'),
+                    viewport: shell.viewport
+                }).promise;
+
+                const textContent = await shell.page.getTextContent();
+                pdfjsLib.renderTextLayer({
+                    textContentSource: textContent,
+                    container: shell.textLayer,
+                    viewport: shell.viewport,
+                    textDivs: []
+                });
+
+                shell.rendered = true;
+            } finally {
+                shell.rendering = false;
+            }
+        }
+
+        function queuePageRender(pageNumber) {
+            renderPageShell(pageNumber).catch(function(error) {
+                showError('Falha ao renderizar a pagina ' + pageNumber + ': ' + (error && error.message ? error.message : String(error)));
+            });
+        }
+
+        async function prepareRemainingPageShells(pdf, startPageNumber) {
+            for (let pageNumber = startPageNumber; pageNumber <= pdf.numPages; pageNumber += 1) {
+                const page = await pdf.getPage(pageNumber);
+                const viewport = page.getViewport({ scale: 1.35 });
+
+                createPageShell(pageNumber, page, viewport);
+
+                if (pageNumber <= 3) {
+                    queuePageRender(pageNumber);
+                }
+
+                if (pageNumber % 3 === 0) {
+                    await yieldToUi();
+                }
+            }
+
+            renderAnnotations();
+            renderList();
+        }
+
+        async function renderPdf() {
+            if (!pdfAssetUrl) {
+                showError('A rota interna do PDF nao foi preparada.');
                 return;
             }
 
@@ -603,72 +748,39 @@
                 return;
             }
 
+            showLoading('Baixando e preparando o documento para renderizacao...');
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-            const documentTask = pdfjsLib.getDocument({ data: decodePdfData() });
+            const response = await fetch(pdfAssetUrl);
+            if (!response.ok) {
+                const message = await response.text();
+                showError(message || ('Falha ao carregar o PDF com status ' + response.status + '.'));
+                return;
+            }
+
+            const pdfBytes = new Uint8Array(await response.arrayBuffer());
+            errorSlot.innerHTML = '';
+
+            const documentTask = pdfjsLib.getDocument({ data: pdfBytes });
             const pdf = await documentTask.promise;
 
-            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-                const page = await pdf.getPage(pageNumber);
-                const viewport = page.getViewport({ scale: 1.35 });
-                const root = document.createElement('section');
-                root.className = 'pdf-page';
-                root.dataset.pageNumber = String(pageNumber);
-                root.style.width = viewport.width + 'px';
-                root.style.height = viewport.height + 'px';
+            const firstPage = await pdf.getPage(1);
+            const firstViewport = firstPage.getViewport({ scale: 1.35 });
 
-                const canvas = document.createElement('canvas');
-                canvas.className = 'pdf-canvas';
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                canvas.style.width = viewport.width + 'px';
-                canvas.style.height = viewport.height + 'px';
-
-                const textLayer = document.createElement('div');
-                textLayer.className = 'textLayer';
-
-                const overlay = document.createElement('div');
-                overlay.className = 'page-overlay';
-
-                root.appendChild(canvas);
-                root.appendChild(textLayer);
-                root.appendChild(overlay);
-                pagesContainer.appendChild(root);
-                pageShells.set(pageNumber, { root, overlay, textLayer });
-
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-                const textContent = await page.getTextContent();
-                pdfjsLib.renderTextLayer({
-                    textContentSource: textContent,
-                    container: textLayer,
-                    viewport: viewport,
-                    textDivs: []
-                });
-
-                root.addEventListener('click', function(event) {
-                    if (mode !== 'note') {
-                        return;
-                    }
-
-                    const bounds = root.getBoundingClientRect();
-                    const note = {
-                        id: createId('note'),
-                        type: 'note',
-                        page: pageNumber,
-                        x: (event.clientX - bounds.left) / bounds.width,
-                        y: (event.clientY - bounds.top) / bounds.height,
-                        text: ''
-                    };
-                    annotations.push(note);
-                    saveAnnotations();
-                    focusAnnotation(note.id, { focusEditor: true });
-                });
-            }
+            createPageShell(1, firstPage, firstViewport);
+            ensurePageObserver();
 
             setMode(mode);
             syncSelectedEditor();
             renderAnnotations();
             renderList();
+
+            errorSlot.innerHTML = '';
+            await renderPageShell(1);
+
+            prepareRemainingPageShells(pdf, 2).catch(function(error) {
+                showError('Falha ao preparar as paginas restantes: ' + (error && error.message ? error.message : String(error)));
+            });
         }
 
         document.addEventListener('mouseup', function() {

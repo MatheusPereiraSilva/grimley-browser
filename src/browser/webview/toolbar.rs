@@ -1,9 +1,6 @@
-use std::sync::{Arc, Mutex};
-
+use crate::{app::PendingAction, browser::{toolbar_bounds, BrowserAction}};
 use tao::window::Window;
 use wry::{http::Request, WebView, WebViewBuilder};
-
-use super::{action::BrowserAction, layout::toolbar_bounds};
 
 const TOOLBAR_HTML: &str = r#"
 <!DOCTYPE html>
@@ -310,10 +307,7 @@ const TOOLBAR_HTML: &str = r#"
 </html>
 "#;
 
-pub fn create_ui_webview(
-    window: &Window,
-    pending_action: Arc<Mutex<Option<BrowserAction>>>,
-) -> WebView {
+pub(crate) fn create_ui_webview(window: &Window, pending_action: PendingAction) -> WebView {
     WebViewBuilder::new_as_child(window)
         .with_bounds(toolbar_bounds(window))
         .with_html(TOOLBAR_HTML)

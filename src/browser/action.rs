@@ -1,5 +1,5 @@
 #[derive(Clone, Debug)]
-pub enum BrowserAction {
+pub(crate) enum BrowserAction {
     Navigate(String),
     Back,
     Forward,

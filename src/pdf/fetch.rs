@@ -1,13 +1,4 @@
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-
-pub(crate) fn load_pdf_state(pdf_url: &str) -> (Option<String>, Option<String>) {
-    match fetch_pdf_data_base64(pdf_url) {
-        Ok(data) => (Some(data), None),
-        Err(error) => (None, Some(error)),
-    }
-}
-
-fn fetch_pdf_data_base64(pdf_url: &str) -> Result<String, String> {
+pub(crate) fn fetch_pdf_bytes(pdf_url: &str) -> Result<Vec<u8>, String> {
     let response = reqwest::blocking::get(pdf_url)
         .map_err(|error| format!("Nao foi possivel baixar o PDF: {error}"))?;
 
@@ -22,5 +13,5 @@ fn fetch_pdf_data_base64(pdf_url: &str) -> Result<String, String> {
         .bytes()
         .map_err(|error| format!("Nao foi possivel ler os bytes do PDF: {error}"))?;
 
-    Ok(BASE64_STANDARD.encode(bytes))
+    Ok(bytes.to_vec())
 }

@@ -1,11 +1,9 @@
 mod action;
-mod content;
 mod layout;
-mod toolbar;
 mod url;
+mod webview;
 
-pub use action::BrowserAction;
-pub use content::create_content_webview_with_url;
-pub use layout::{content_bounds, toolbar_bounds};
-pub use toolbar::create_ui_webview;
-pub use url::{escape_js_string, is_pdf_url, normalize_url};
+pub(crate) use action::BrowserAction;
+pub(crate) use layout::{content_bounds, toolbar_bounds};
+pub(crate) use url::{escape_js_string, is_pdf_url, normalize_url, HOME_PAGE_URL};
+pub(crate) use webview::{create_content_webview_with_url, create_ui_webview};

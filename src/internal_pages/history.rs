@@ -1,79 +1,13 @@
-use super::{
-    constants::{HISTORY_PAGE_URL, NEW_TAB_PAGE_URL},
-    escape::escape_html,
-};
-
-#[derive(Default)]
-pub(crate) struct BrowserHistory {
-    current: Option<String>,
-    back_stack: Vec<String>,
-    forward_stack: Vec<String>,
-}
-
-impl BrowserHistory {
-    pub(crate) fn new(initial_url: &str) -> Self {
-        Self {
-            current: Some(initial_url.to_string()),
-            back_stack: Vec::new(),
-            forward_stack: Vec::new(),
-        }
-    }
-
-    pub(crate) fn navigate_to(&mut self, url: &str) -> String {
-        if self.current.as_deref() != Some(url) {
-            if let Some(current) = self.current.take() {
-                self.back_stack.push(current);
-            }
-            self.forward_stack.clear();
-            self.current = Some(url.to_string());
-        }
-
-        url.to_string()
-    }
-
-    pub(crate) fn go_back(&mut self) -> Option<String> {
-        let previous = self.back_stack.pop()?;
-
-        if let Some(current) = self.current.take() {
-            self.forward_stack.push(current);
-        }
-
-        self.current = Some(previous.clone());
-        Some(previous)
-    }
-
-    pub(crate) fn go_forward(&mut self) -> Option<String> {
-        let next = self.forward_stack.pop()?;
-
-        if let Some(current) = self.current.take() {
-            self.back_stack.push(current);
-        }
-
-        self.current = Some(next.clone());
-        Some(next)
-    }
-
-    pub(crate) fn set_current(&mut self, url: &str) {
-        self.current = Some(url.to_string());
-    }
-
-    pub(crate) fn can_go_back(&self) -> bool {
-        !self.back_stack.is_empty()
-    }
-
-    pub(crate) fn can_go_forward(&self) -> bool {
-        !self.forward_stack.is_empty()
-    }
-}
+use super::{HISTORY_PAGE_URL, InternalPageRenderer, NEW_TAB_PAGE_URL};
 
 #[derive(Clone)]
-struct HistoryEntry {
-    url: String,
+pub(crate) struct HistoryVisit {
+    pub(crate) url: String,
 }
 
 #[derive(Default)]
 pub(crate) struct VisitedPages {
-    entries: Vec<HistoryEntry>,
+    entries: Vec<HistoryVisit>,
 }
 
 impl VisitedPages {
@@ -82,7 +16,7 @@ impl VisitedPages {
             return;
         }
 
-        self.entries.push(HistoryEntry {
+        self.entries.push(HistoryVisit {
             url: url.to_string(),
         });
 
@@ -92,7 +26,23 @@ impl VisitedPages {
         }
     }
 
-    pub(crate) fn render_html(&self) -> String {
+    pub(crate) fn entries(&self) -> &[HistoryVisit] {
+        &self.entries
+    }
+}
+
+pub(crate) struct HistoryPage<'a> {
+    entries: &'a [HistoryVisit],
+}
+
+impl<'a> HistoryPage<'a> {
+    pub(crate) fn new(entries: &'a [HistoryVisit]) -> Self {
+        Self { entries }
+    }
+}
+
+impl InternalPageRenderer for HistoryPage<'_> {
+    fn render(&self) -> String {
         let items = if self.entries.is_empty() {
             "<div class=\"empty\">Seu historico ainda esta vazio.</div>".to_string()
         } else {
@@ -201,4 +151,13 @@ impl VisitedPages {
             items = items
         )
     }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }

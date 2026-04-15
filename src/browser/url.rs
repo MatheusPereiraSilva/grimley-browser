@@ -1,4 +1,6 @@
-pub fn normalize_url(raw_url: &str) -> String {
+pub(crate) const HOME_PAGE_URL: &str = "https://www.google.com";
+
+pub(crate) fn normalize_url(raw_url: &str) -> String {
     let trimmed = raw_url.trim();
 
     if trimmed.is_empty() {
@@ -12,7 +14,7 @@ pub fn normalize_url(raw_url: &str) -> String {
     }
 }
 
-pub fn escape_js_string(value: &str) -> String {
+pub(crate) fn escape_js_string(value: &str) -> String {
     value
         .replace('\\', "\\\\")
         .replace('\'', "\\'")
@@ -20,7 +22,7 @@ pub fn escape_js_string(value: &str) -> String {
         .replace('\r', "\\r")
 }
 
-pub fn is_pdf_url(url: &str) -> bool {
+pub(crate) fn is_pdf_url(url: &str) -> bool {
     let lower = url.trim().to_ascii_lowercase();
     let without_fragment = lower.split('#').next().unwrap_or(&lower);
     let without_query = without_fragment
