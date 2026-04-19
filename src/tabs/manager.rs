@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use tao::window::Window;
 
 use crate::{
     app::{LoadedUrls, PdfRoutes, PendingAction},
-    browser::HOME_PAGE_URL,
+    pdf::PdfFetcherHandle,
+    shield::ShieldEngineHandle,
+    storage::AppStorage,
 };
 
 use super::{TabLaunch, TabSession};
@@ -19,19 +23,64 @@ impl BrowserTabs {
         loaded_urls: LoadedUrls,
         pending_action: PendingAction,
         pdf_routes: PdfRoutes,
+        pdf_fetcher: PdfFetcherHandle,
+        shield_engine: ShieldEngineHandle,
+        storage: AppStorage,
+        home_page_url: &str,
     ) -> Self {
+        Self::restore(
+            window,
+            loaded_urls,
+            pending_action,
+            pdf_routes,
+            pdf_fetcher,
+            shield_engine,
+            storage,
+            vec![TabLaunch::regular(home_page_url)],
+            0,
+        )
+    }
+
+    pub(crate) fn restore(
+        window: &Window,
+        loaded_urls: LoadedUrls,
+        pending_action: PendingAction,
+        pdf_routes: PdfRoutes,
+        pdf_fetcher: PdfFetcherHandle,
+        shield_engine: ShieldEngineHandle,
+        storage: AppStorage,
+        launches: Vec<TabLaunch>,
+        active_index: usize,
+    ) -> Self {
+        let launches = if launches.is_empty() {
+            vec![TabLaunch::new_tab()]
+        } else {
+            launches
+        };
+        let active_index = active_index.min(launches.len().saturating_sub(1));
+        let tabs = launches
+            .into_iter()
+            .enumerate()
+            .map(|(index, launch)| {
+                TabSession::new(
+                    window,
+                    index,
+                    Arc::clone(&loaded_urls),
+                    Arc::clone(&pending_action),
+                    Arc::clone(&pdf_routes),
+                    Arc::clone(&pdf_fetcher),
+                    Arc::clone(&shield_engine),
+                    storage.clone(),
+                    index == active_index,
+                    launch,
+                )
+            })
+            .collect::<Vec<_>>();
+
         Self {
-            tabs: vec![TabSession::new(
-                window,
-                0,
-                loaded_urls,
-                pending_action,
-                pdf_routes,
-                true,
-                TabLaunch::regular(HOME_PAGE_URL),
-            )],
-            active_index: 0,
-            next_tab_id: 1,
+            next_tab_id: tabs.len(),
+            tabs,
+            active_index,
         }
     }
 
@@ -73,6 +122,9 @@ impl BrowserTabs {
         loaded_urls: LoadedUrls,
         pending_action: PendingAction,
         pdf_routes: PdfRoutes,
+        pdf_fetcher: PdfFetcherHandle,
+        shield_engine: ShieldEngineHandle,
+        storage: AppStorage,
         launch: TabLaunch,
     ) -> usize {
         if let Some(current) = self.tabs.get_mut(self.active_index) {
@@ -86,6 +138,9 @@ impl BrowserTabs {
             loaded_urls,
             pending_action,
             pdf_routes,
+            pdf_fetcher,
+            shield_engine,
+            storage,
             true,
             launch,
         ));
@@ -111,6 +166,9 @@ impl BrowserTabs {
         loaded_urls: LoadedUrls,
         pending_action: PendingAction,
         pdf_routes: PdfRoutes,
+        pdf_fetcher: PdfFetcherHandle,
+        shield_engine: ShieldEngineHandle,
+        storage: AppStorage,
         index: usize,
     ) {
         if index >= self.tabs.len() {
@@ -127,6 +185,9 @@ impl BrowserTabs {
                 loaded_urls,
                 pending_action,
                 pdf_routes,
+                pdf_fetcher,
+                shield_engine,
+                storage,
                 true,
                 TabLaunch::new_tab(),
             ));
@@ -179,6 +240,10 @@ impl BrowserTabs {
             .join(",");
 
         format!("[{}]", entries)
+    }
+
+    pub(crate) fn session_launches(&self) -> Vec<TabLaunch> {
+        self.tabs.iter().map(TabSession::session_launch).collect()
     }
 }
 

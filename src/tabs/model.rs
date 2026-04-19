@@ -7,7 +7,9 @@ use crate::{
     app::{LoadedUrls, PdfRoutes, PendingAction},
     browser::create_content_webview_with_url,
     internal_pages::{InternalPageKind, HISTORY_PAGE_URL, NEW_TAB_PAGE_URL},
-    pdf::{PdfDocumentRef, PdfWorkspaceMode, PDF_PAGE_URL},
+    pdf::{open_pdf_workspace, PdfDocumentRef, PdfFetcherHandle, PdfWorkspaceMode, PDF_PAGE_URL},
+    shield::ShieldEngineHandle,
+    storage::AppStorage,
 };
 
 use super::BrowserHistory;
@@ -26,6 +28,10 @@ impl TabLaunch {
         Self::Web { url: url.into() }
     }
 
+    pub(crate) fn internal(kind: InternalPageKind) -> Self {
+        Self::Internal(InternalDocument::from_kind(kind))
+    }
+
     pub(crate) fn new_tab() -> Self {
         Self::Internal(InternalDocument::new_tab())
     }
@@ -34,6 +40,16 @@ impl TabLaunch {
         Self::Pdf {
             origin_url: pdf_url.into(),
             workspace_mode: PdfWorkspaceMode::Workspace,
+        }
+    }
+
+    pub(crate) fn pdf_with_mode(
+        pdf_url: impl Into<String>,
+        workspace_mode: PdfWorkspaceMode,
+    ) -> Self {
+        Self::Pdf {
+            origin_url: pdf_url.into(),
+            workspace_mode,
         }
     }
 }
@@ -86,6 +102,9 @@ pub(crate) enum TabRenderRequest {
 pub(crate) struct TabSession {
     tab: Tab,
     pdf_routes: PdfRoutes,
+    pdf_fetcher: PdfFetcherHandle,
+    shield_engine: ShieldEngineHandle,
+    storage: AppStorage,
     pub(crate) webview: Option<WebView>,
 }
 
@@ -139,7 +158,7 @@ impl Tab {
             TabLaunch::Pdf {
                 origin_url,
                 workspace_mode,
-            } => TabContent::Pdf(PdfDocumentRef::new(id, origin_url, workspace_mode)),
+            } => TabContent::Pdf(open_pdf_workspace(id, origin_url, workspace_mode)),
         };
 
         let title = content.title();
@@ -234,8 +253,14 @@ impl Tab {
         self.refresh_title();
     }
 
+    pub(crate) fn show_internal_page(&mut self, kind: InternalPageKind) {
+        self.content = TabContent::Internal(InternalDocument::from_kind(kind));
+        self.lifecycle.needs_render = true;
+        self.refresh_title();
+    }
+
     pub(crate) fn show_pdf_workspace(&mut self, origin_url: String) {
-        self.content = TabContent::Pdf(PdfDocumentRef::new(
+        self.content = TabContent::Pdf(open_pdf_workspace(
             self.id,
             origin_url,
             PdfWorkspaceMode::Workspace,
@@ -353,16 +378,16 @@ impl WebDocument {
 }
 
 impl InternalDocument {
+    fn from_kind(kind: InternalPageKind) -> Self {
+        Self { kind }
+    }
+
     fn new_tab() -> Self {
-        Self {
-            kind: InternalPageKind::NewTab,
-        }
+        Self::from_kind(InternalPageKind::NewTab)
     }
 
     fn history() -> Self {
-        Self {
-            kind: InternalPageKind::History,
-        }
+        Self::from_kind(InternalPageKind::History)
     }
 
     pub(crate) fn kind(&self) -> InternalPageKind {
@@ -373,6 +398,7 @@ impl InternalDocument {
         match self.kind {
             InternalPageKind::NewTab => "Nova aba",
             InternalPageKind::History => "Historico",
+            InternalPageKind::Shield => "Grimley Shield",
         }
     }
 
@@ -380,6 +406,7 @@ impl InternalDocument {
         match self.kind {
             InternalPageKind::NewTab => "grimley://nova-aba",
             InternalPageKind::History => "grimley://historico",
+            InternalPageKind::Shield => "grimley://shield",
         }
     }
 
@@ -387,11 +414,15 @@ impl InternalDocument {
         match self.kind {
             InternalPageKind::NewTab => NEW_TAB_PAGE_URL,
             InternalPageKind::History => HISTORY_PAGE_URL,
+            InternalPageKind::Shield => crate::internal_pages::SHIELD_PAGE_URL,
         }
     }
 
     fn is_suspendable(&self) -> bool {
-        matches!(self.kind, InternalPageKind::NewTab | InternalPageKind::History)
+        matches!(
+            self.kind,
+            InternalPageKind::NewTab | InternalPageKind::History | InternalPageKind::Shield
+        )
     }
 }
 
@@ -402,6 +433,9 @@ impl TabSession {
         loaded_urls: LoadedUrls,
         pending_action: PendingAction,
         pdf_routes: PdfRoutes,
+        pdf_fetcher: PdfFetcherHandle,
+        shield_engine: ShieldEngineHandle,
+        storage: AppStorage,
         visible: bool,
         launch: TabLaunch,
     ) -> Self {
@@ -413,6 +447,9 @@ impl TabSession {
             loaded_urls,
             pending_action,
             Arc::clone(&pdf_routes),
+            Arc::clone(&pdf_fetcher),
+            Arc::clone(&shield_engine),
+            storage.clone(),
             visible,
             tab.allows_pdf_navigation(),
         );
@@ -421,6 +458,9 @@ impl TabSession {
         let session = Self {
             tab,
             pdf_routes,
+            pdf_fetcher,
+            shield_engine,
+            storage,
             webview: Some(webview),
         };
         session.sync_pdf_route();
@@ -482,6 +522,11 @@ impl TabSession {
         self.sync_pdf_route();
     }
 
+    pub(crate) fn show_internal_page(&mut self, kind: InternalPageKind) {
+        self.tab.show_internal_page(kind);
+        self.sync_pdf_route();
+    }
+
     pub(crate) fn show_pdf_workspace(&mut self, origin_url: String) {
         self.tab.show_pdf_workspace(origin_url);
         self.sync_pdf_route();
@@ -522,6 +567,9 @@ impl TabSession {
                 loaded_urls,
                 pending_action,
                 Arc::clone(&self.pdf_routes),
+                Arc::clone(&self.pdf_fetcher),
+                Arc::clone(&self.shield_engine),
+                self.storage.clone(),
                 visible,
                 self.allows_pdf_navigation(),
             ));
@@ -565,17 +613,27 @@ impl TabSession {
     fn sync_pdf_route(&self) {
         let mut routes = self.pdf_routes.lock().unwrap();
 
-        if let Some(pdf_url) = self.pdf_route_url() {
-            routes.insert(self.id(), pdf_url.to_string());
+        if let Some(pdf_document) = self.pdf_route_document() {
+            routes.insert(self.id(), pdf_document);
         } else {
             routes.remove(&self.id());
         }
     }
 
-    fn pdf_route_url(&self) -> Option<&str> {
+    fn pdf_route_document(&self) -> Option<PdfDocumentRef> {
         match &self.tab.content {
-            TabContent::Pdf(document) => Some(document.origin_url()),
+            TabContent::Pdf(document) => Some(document.clone()),
             _ => None,
+        }
+    }
+
+    pub(crate) fn session_launch(&self) -> TabLaunch {
+        match &self.tab.content {
+            TabContent::Web(document) => TabLaunch::regular(document.current_url().to_string()),
+            TabContent::Internal(document) => TabLaunch::internal(document.kind()),
+            TabContent::Pdf(document) => {
+                TabLaunch::pdf_with_mode(document.origin_url().to_string(), document.workspace_mode())
+            }
         }
     }
 }

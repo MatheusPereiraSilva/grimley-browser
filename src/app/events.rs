@@ -5,7 +5,13 @@ use wry::WebView;
 
 use crate::{
     browser::{content_bounds, is_pdf_url, normalize_url, toolbar_bounds, BrowserAction},
-    internal_pages::{render_internal_page, VisitedPages, HISTORY_PAGE_URL, NEW_TAB_PAGE_URL},
+    internal_pages::{
+        internal_page_kind_for_url, render_internal_page, VisitedPages, HISTORY_PAGE_URL,
+        NEW_TAB_PAGE_URL, SHIELD_PAGE_URL,
+    },
+    pdf::PdfFetcherHandle,
+    shield::ShieldEngineHandle,
+    storage::AppStorage,
     tabs::{BrowserTabs, TabLaunch},
 };
 
@@ -18,7 +24,9 @@ fn build_new_tab_launch(url: Option<String>) -> TabLaunch {
     match url {
         Some(value) => {
             let normalized = normalize_url(&value);
-            if is_pdf_url(&normalized) {
+            if let Some(kind) = internal_page_kind_for_url(&normalized) {
+                TabLaunch::internal(kind)
+            } else if is_pdf_url(&normalized) {
                 build_pdf_tab_launch(normalized)
             } else {
                 TabLaunch::regular(normalized)
@@ -40,13 +48,30 @@ pub(crate) fn handle_browser_action(
     loaded_urls: &LoadedUrls,
     pending_action: &PendingAction,
     pdf_routes: &PdfRoutes,
+    pdf_fetcher: &PdfFetcherHandle,
+    shield_engine: &ShieldEngineHandle,
+    storage: &AppStorage,
     visited_pages: &mut VisitedPages,
     last_ui_snapshot: &mut Option<UiSnapshot>,
 ) {
     match action {
         BrowserAction::Navigate(url) => {
             let final_url = normalize_url(&url);
-            if is_pdf_url(&final_url) && !browser_tabs.active_tab().allows_pdf_navigation() {
+            if let Some(kind) = internal_page_kind_for_url(&final_url) {
+                let tab = browser_tabs.active_tab_mut();
+                tab.show_internal_page(kind);
+                tab.ensure_webview(
+                    window,
+                    Arc::clone(loaded_urls),
+                    Arc::clone(pending_action),
+                    true,
+                );
+                tab.webview
+                    .as_ref()
+                    .expect("WebView ausente ao abrir a pagina interna")
+                    .load_url(tab.load_target_url())
+                    .expect("Erro ao abrir a pagina interna");
+            } else if is_pdf_url(&final_url) && !browser_tabs.active_tab().allows_pdf_navigation() {
                 let tab = browser_tabs.active_tab_mut();
                 tab.show_pdf_workspace(final_url);
                 tab.ensure_webview(
@@ -133,12 +158,17 @@ pub(crate) fn handle_browser_action(
                 Arc::clone(loaded_urls),
                 Arc::clone(pending_action),
                 Arc::clone(pdf_routes),
+                Arc::clone(pdf_fetcher),
+                Arc::clone(shield_engine),
+                storage.clone(),
                 build_new_tab_launch(url),
             );
             if let Some(tab) = browser_tabs.tab_mut(new_index) {
                 render_internal_page(
                     tab,
                     visited_pages,
+                    Arc::clone(shield_engine),
+                    storage,
                     window,
                     Arc::clone(loaded_urls),
                     Arc::clone(pending_action),
@@ -152,12 +182,17 @@ pub(crate) fn handle_browser_action(
                 Arc::clone(loaded_urls),
                 Arc::clone(pending_action),
                 Arc::clone(pdf_routes),
+                Arc::clone(pdf_fetcher),
+                Arc::clone(shield_engine),
+                storage.clone(),
                 build_pdf_tab_launch(pdf_url),
             );
             if let Some(tab) = browser_tabs.tab_mut(new_index) {
                 render_internal_page(
                     tab,
                     visited_pages,
+                    Arc::clone(shield_engine),
+                    storage,
                     window,
                     Arc::clone(loaded_urls),
                     Arc::clone(pending_action),
@@ -169,6 +204,8 @@ pub(crate) fn handle_browser_action(
                 render_internal_page(
                     browser_tabs.active_tab_mut(),
                     visited_pages,
+                    Arc::clone(shield_engine),
+                    storage,
                     window,
                     Arc::clone(loaded_urls),
                     Arc::clone(pending_action),
@@ -181,11 +218,16 @@ pub(crate) fn handle_browser_action(
                 Arc::clone(loaded_urls),
                 Arc::clone(pending_action),
                 Arc::clone(pdf_routes),
+                Arc::clone(pdf_fetcher),
+                Arc::clone(shield_engine),
+                storage.clone(),
                 index,
             );
             render_internal_page(
                 browser_tabs.active_tab_mut(),
                 visited_pages,
+                Arc::clone(shield_engine),
+                storage,
                 window,
                 Arc::clone(loaded_urls),
                 Arc::clone(pending_action),
@@ -204,15 +246,19 @@ pub(crate) fn handle_loaded_urls(
     pending_action: &PendingAction,
     visited_pages: &mut VisitedPages,
     last_ui_snapshot: &mut Option<UiSnapshot>,
-) {
+    shield_engine: &ShieldEngineHandle,
+    storage: &AppStorage,
+) -> bool {
     let pending_loaded_urls = {
         let mut queue = loaded_urls.lock().unwrap();
         std::mem::take(&mut *queue)
     };
 
+    let had_updates = !pending_loaded_urls.is_empty();
+
     for (tab_id, url) in pending_loaded_urls {
         if let Some(index) = browser_tabs.find_index_by_id(tab_id) {
-            if url != HISTORY_PAGE_URL && url != NEW_TAB_PAGE_URL {
+            if url != HISTORY_PAGE_URL && url != NEW_TAB_PAGE_URL && url != SHIELD_PAGE_URL {
                 visited_pages.record(&url);
             }
 
@@ -222,6 +268,8 @@ pub(crate) fn handle_loaded_urls(
                 render_internal_page(
                     browser_tabs.active_tab_mut(),
                     visited_pages,
+                    Arc::clone(shield_engine),
+                    storage,
                     window,
                     Arc::clone(loaded_urls),
                     Arc::clone(pending_action),
@@ -230,6 +278,8 @@ pub(crate) fn handle_loaded_urls(
             }
         }
     }
+
+    had_updates
 }
 
 pub(crate) fn handle_window_event(

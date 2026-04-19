@@ -295,6 +295,7 @@
     <script>
         const pdfUrl = document.body.dataset.pdfUrl || '';
         const pdfAssetUrl = '__GRIMLEY_PDF_ASSET_URL__';
+        const initialAnnotationsJson = '__GRIMLEY_PDF_INITIAL_ANNOTATIONS__';
         const storageKey = 'grimley-pdf-annotations-v2:' + pdfUrl;
         const pagesContainer = document.getElementById('pages');
         const errorSlot = document.getElementById('error-slot');
@@ -339,6 +340,13 @@
 
         function loadAnnotations() {
             try {
+                if (initialAnnotationsJson) {
+                    const initialParsed = JSON.parse(initialAnnotationsJson);
+                    if (Array.isArray(initialParsed)) {
+                        return initialParsed.map(normalizeAnnotation).filter(Boolean);
+                    }
+                }
+
                 const raw = window.localStorage.getItem(storageKey);
                 const parsed = raw ? JSON.parse(raw) : [];
                 return Array.isArray(parsed)
@@ -351,6 +359,19 @@
 
         function saveAnnotations() {
             window.localStorage.setItem(storageKey, JSON.stringify(annotations));
+            persistAnnotationsToHost();
+        }
+
+        function persistAnnotationsToHost() {
+            if (!window.ipc || !pdfUrl) {
+                return;
+            }
+
+            window.ipc.postMessage(JSON.stringify({
+                kind: 'save-pdf-annotations',
+                pdfUrl: pdfUrl,
+                annotations: annotations
+            }));
         }
 
         function createId(prefix) {

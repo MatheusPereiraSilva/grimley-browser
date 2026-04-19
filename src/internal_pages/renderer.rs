@@ -4,16 +4,21 @@ use crate::{
     app::{LoadedUrls, PendingAction},
     browser::escape_js_string,
     pdf::render_pdf_workspace_html,
+    shield::ShieldEngineHandle,
+    storage::{annotations::load_annotations_json, AppStorage},
     tabs::{TabRenderRequest, TabSession},
 };
 
 use super::{
-    render_new_tab_html, HistoryPage, InternalPageKind, InternalPageRenderer, VisitedPages,
+    render_new_tab_html, HistoryPage, InternalPageKind, InternalPageRenderer, ShieldPage,
+    VisitedPages,
 };
 
 pub(crate) fn render_internal_page(
     tab: &mut TabSession,
     visited_pages: &VisitedPages,
+    shield_engine: ShieldEngineHandle,
+    storage: &AppStorage,
     window: &Window,
     loaded_urls: LoadedUrls,
     pending_action: PendingAction,
@@ -25,8 +30,18 @@ pub(crate) fn render_internal_page(
     };
 
     let html = match render_request {
-        TabRenderRequest::Internal { kind } => render_page(kind, visited_pages),
-        TabRenderRequest::Pdf(document) => render_pdf_workspace_html(tab.id(), &document),
+        TabRenderRequest::Internal { kind } => render_page(kind, visited_pages, shield_engine),
+        TabRenderRequest::Pdf(document) => {
+            let initial_annotations_json = load_annotations_json(storage, document.origin_url())
+                .unwrap_or_else(|error| {
+                    tracing::warn!(
+                        "Falha ao carregar anotacoes persistidas do PDF {}: {error}",
+                        document.origin_url()
+                    );
+                    "[]".to_string()
+                });
+            render_pdf_workspace_html(tab.id(), &document, &initial_annotations_json)
+        }
     };
 
     let render_script = format!(
@@ -41,11 +56,19 @@ pub(crate) fn render_internal_page(
     tab.mark_rendered();
 }
 
-fn render_page(kind: InternalPageKind, visited_pages: &VisitedPages) -> String {
+fn render_page(
+    kind: InternalPageKind,
+    visited_pages: &VisitedPages,
+    shield_engine: ShieldEngineHandle,
+) -> String {
     match kind {
         InternalPageKind::NewTab => render_new_tab_html(),
         InternalPageKind::History => {
             let renderer = HistoryPage::new(visited_pages.entries());
+            renderer.render()
+        }
+        InternalPageKind::Shield => {
+            let renderer = ShieldPage::new(shield_engine);
             renderer.render()
         }
     }

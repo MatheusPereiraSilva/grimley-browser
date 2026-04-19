@@ -3,13 +3,17 @@ use wry::http::{
     Request, Response, StatusCode,
 };
 
-use crate::{app::PdfRoutes, pdf::fetch_pdf_bytes};
+use crate::{
+    app::PdfRoutes,
+    pdf::{fetch_pdf_bytes, PdfFetcherHandle},
+};
 
 pub(super) const PDF_PROTOCOL_NAME: &str = "grimley-pdf";
 
 pub(super) fn build_pdf_protocol_response(
     request: Request<Vec<u8>>,
     pdf_routes: &PdfRoutes,
+    pdf_fetcher: &PdfFetcherHandle,
 ) -> Response<Vec<u8>> {
     let Some(tab_id) = parse_pdf_tab_id(&request) else {
         return build_text_response(
@@ -18,14 +22,14 @@ pub(super) fn build_pdf_protocol_response(
         );
     };
 
-    let Some(pdf_url) = pdf_routes.lock().unwrap().get(&tab_id).cloned() else {
+    let Some(pdf_document) = pdf_routes.lock().unwrap().get(&tab_id).cloned() else {
         return build_text_response(
             StatusCode::NOT_FOUND,
             "O PDF desta aba nao esta mais disponivel.",
         );
     };
 
-    match fetch_pdf_bytes(&pdf_url) {
+    match fetch_pdf_bytes(pdf_fetcher, pdf_document.source()) {
         Ok(bytes) => Response::builder()
             .status(StatusCode::OK)
             .header(CONTENT_TYPE, "application/pdf")

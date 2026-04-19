@@ -1,6 +1,8 @@
-use super::{HISTORY_PAGE_URL, InternalPageRenderer, NEW_TAB_PAGE_URL};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+use super::{HISTORY_PAGE_URL, InternalPageRenderer, NEW_TAB_PAGE_URL, SHIELD_PAGE_URL};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct HistoryVisit {
     pub(crate) url: String,
 }
@@ -11,8 +13,18 @@ pub(crate) struct VisitedPages {
 }
 
 impl VisitedPages {
+    pub(crate) fn from_entries(entries: Vec<HistoryVisit>) -> Self {
+        let mut pages = Self::default();
+
+        for entry in entries {
+            pages.record(&entry.url);
+        }
+
+        pages
+    }
+
     pub(crate) fn record(&mut self, url: &str) {
-        if url == HISTORY_PAGE_URL || url == NEW_TAB_PAGE_URL {
+        if url == HISTORY_PAGE_URL || url == NEW_TAB_PAGE_URL || url == SHIELD_PAGE_URL {
             return;
         }
 

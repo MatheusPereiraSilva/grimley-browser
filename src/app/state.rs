@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::browser::BrowserAction;
+use crate::{browser::BrowserAction, pdf::PdfWorkspaceState};
 
 pub(crate) type PendingAction = Arc<Mutex<Option<BrowserAction>>>;
 pub(crate) type LoadedUrls = Arc<Mutex<Vec<(usize, String)>>>;
-pub(crate) type PdfRoutes = Arc<Mutex<HashMap<usize, String>>>;
+pub(crate) type PdfRoutes = Arc<Mutex<HashMap<usize, PdfWorkspaceState>>>;
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct UiSnapshot {
