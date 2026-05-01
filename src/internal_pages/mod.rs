@@ -20,7 +20,7 @@ pub(crate) trait InternalPageRenderer {
 
 pub(crate) use history::{HistoryPage, HistoryVisit, VisitedPages};
 pub(crate) use new_tab::render_new_tab_html;
-pub(crate) use renderer::render_internal_page;
+pub(crate) use renderer::{render_internal_page, render_internal_page_html};
 pub(crate) use shield::ShieldPage;
 
 pub(crate) fn internal_page_kind_for_url(url: &str) -> Option<InternalPageKind> {

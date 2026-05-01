@@ -243,8 +243,8 @@
     <div class="layout">
         <aside class="sidebar">
             <div>
-                <div class="title">PDF Workspace</div>
-                <div class="muted">Agora o PDF e renderizado em paginas controladas para que os grifos fiquem presos a pagina e acompanhem o documento.</div>
+                <div class="title">__GRIMLEY_PDF_WORKFLOW_TITLE__</div>
+                <div class="muted">__GRIMLEY_PDF_WORKFLOW_COPY__</div>
             </div>
             <div class="toolbox">
                 <button class="tool-btn active" id="mode-navigate" type="button"><span>Navegar</span><span class="badge">Livre</span></button>
@@ -253,10 +253,17 @@
             </div>
             <div class="panel">
                 <div class="panel-head">
+                    <strong>Fluxos separados</strong>
+                    <span>UX honesta</span>
+                </div>
+                <div class="panel-copy">Nesta tela voce ancora grifos e notas no PDF original. Texto derivado e exportacao de novo documento entram em etapas separadas.</div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">
                     <strong>Anotacoes</strong>
                     <span id="annotation-count">0 itens</span>
                 </div>
-                <div class="panel-copy" id="status-copy">Selecione texto em modo grifo para ancorar o destaque na pagina.</div>
+                <div class="panel-copy" id="status-copy">Selecione texto em modo grifo para ancorar o destaque na pagina e complemente com notas quando precisar.</div>
                 <div class="selected-note" id="selected-note">
                     <div class="selected-note-copy" id="selected-note-copy">Adicione um comentario para complementar a anotacao selecionada.</div>
                     <textarea id="note-text" placeholder="Escreva um comentario para a anotacao selecionada..."></textarea>
@@ -267,11 +274,11 @@
                 </div>
                 <div class="actions">
                     <button class="btn ghost" id="clear-annotations" type="button">Limpar tudo</button>
-                    <button class="btn ghost" id="export-annotations" type="button">Exportar JSON</button>
+                    <button class="btn ghost" id="export-annotations" type="button">Exportar anotacoes</button>
                 </div>
             </div>
             <div class="annotation-list" id="annotation-list">
-                <div class="empty-state">Nenhuma anotacao ainda. Os grifos agora ficam vinculados a pagina e a area selecionada no texto.</div>
+                <div class="empty-state">Nenhuma anotacao ainda. Os grifos ficam vinculados a pagina e a area selecionada, e as notas permanecem ancoradas no PDF original.</div>
             </div>
         </aside>
         <main class="viewer">
@@ -445,7 +452,7 @@
 
             if (item.type === 'highlight') {
                 item.note = value;
-            } else {
+            } else if (item.type === 'note') {
                 item.text = value;
             }
         }
@@ -457,21 +464,23 @@
         function syncSelectedEditor(options) {
             const current = getSelectedAnnotation();
             const shouldFocus = options && options.focusEditor;
-            const placeholder = current && current.type === 'highlight'
+            const isHighlight = current && current.type === 'highlight';
+            const canEditText = Boolean(current);
+            const placeholder = isHighlight
                 ? 'Descreva o motivo deste grifo ou adicione contexto...'
                 : 'Escreva um comentario para a anotacao selecionada...';
 
             selectedNote.classList.toggle('visible', Boolean(current));
-            noteText.disabled = !current;
-            saveNoteButton.disabled = !current;
+            noteText.disabled = !canEditText;
+            saveNoteButton.disabled = !canEditText;
             deleteSelectedButton.disabled = !current;
             noteText.placeholder = placeholder;
             noteText.value = current ? getAnnotationComment(current) : '';
-            selectedNoteCopy.textContent = current && current.type === 'highlight'
+            selectedNoteCopy.textContent = isHighlight
                 ? 'Este grifo foi criado. Se quiser, complemente com uma anotacao logo abaixo.'
                 : 'Adicione um comentario para complementar a anotacao selecionada.';
 
-            if (shouldFocus && current) {
+            if (shouldFocus && canEditText) {
                 noteText.focus();
                 noteText.setSelectionRange(noteText.value.length, noteText.value.length);
             }
@@ -532,7 +541,7 @@
             annotationCount.textContent = annotations.length + (annotations.length === 1 ? ' item' : ' itens');
 
             if (!annotations.length) {
-                annotationList.innerHTML = '<div class="empty-state">Nenhuma anotacao ainda. Os grifos agora ficam vinculados a pagina e a area selecionada no texto.</div>';
+                annotationList.innerHTML = '<div class="empty-state">Nenhuma anotacao ainda. Os grifos ficam vinculados a pagina e a area selecionada, e as notas permanecem ancoradas no PDF original.</div>';
                 return;
             }
 
@@ -553,7 +562,8 @@
 
                 const type = document.createElement('div');
                 type.className = 'annotation-type';
-                type.textContent = (item.type === 'highlight' ? 'Grifo' : 'Nota') + ' p.' + item.page;
+                const kindLabel = item.type === 'highlight' ? 'Grifo' : 'Nota';
+                type.textContent = kindLabel + ' p.' + item.page;
 
                 const remove = document.createElement('button');
                 remove.type = 'button';
@@ -595,7 +605,7 @@
                             };
                             shell.overlay.appendChild(el);
                         });
-                    } else {
+                    } else if (item.type === 'note') {
                         const pin = document.createElement('button');
                         pin.type = 'button';
                         pin.className = 'note-pin' + (item.id === selectedId ? ' active' : '');
@@ -684,8 +694,12 @@
                 pageObserver.observe(root);
             }
 
-            root.addEventListener('click', function(event) {
+            overlay.addEventListener('click', function(event) {
                 if (mode !== 'note') {
+                    return;
+                }
+
+                if (event.target !== overlay) {
                     return;
                 }
 

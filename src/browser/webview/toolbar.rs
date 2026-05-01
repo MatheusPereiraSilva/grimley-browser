@@ -1,4 +1,7 @@
-use crate::{app::PendingAction, browser::{toolbar_bounds, BrowserAction}};
+use crate::{
+    app::{PendingCommand, UiCommand},
+    browser::toolbar_bounds,
+};
 use tao::window::Window;
 use wry::{http::Request, WebView, WebViewBuilder};
 
@@ -235,47 +238,42 @@ const TOOLBAR_HTML: &str = r#"
         const tabsContainer = document.getElementById('tabs');
 
         function go() {
-            window.ipc.postMessage('navigate:' + input.value);
+            sendCommand({ kind: 'navigate', url: input.value });
         }
 
         function back() {
-            window.ipc.postMessage('back');
+            sendCommand({ kind: 'back' });
         }
 
         function forward() {
-            window.ipc.postMessage('forward');
+            sendCommand({ kind: 'forward' });
         }
 
         function openHistory() {
-            window.ipc.postMessage('show-history');
+            sendCommand({ kind: 'open-history' });
         }
 
         function newTab() {
-            window.ipc.postMessage('new-tab');
+            sendCommand({ kind: 'new-tab' });
         }
 
         function switchTab(index) {
-            window.ipc.postMessage('switch-tab:' + index);
+            sendCommand({ kind: 'switch-tab', index: index });
         }
 
         function closeTab(index) {
-            window.ipc.postMessage('close-tab:' + index);
+            sendCommand({ kind: 'close-tab', index: index });
         }
 
         input.addEventListener('keydown', function(event) {
             if (event.key === 'Enter') go();
         });
 
-        window.setUrl = function(url) {
-            input.value = url;
-        };
+        function sendCommand(command) {
+            window.ipc.postMessage(JSON.stringify(command));
+        }
 
-        window.setNavState = function(canGoBack, canGoForward) {
-            backButton.disabled = !canGoBack;
-            forwardButton.disabled = !canGoForward;
-        };
-
-        window.setTabs = function(tabs, activeIndex) {
+        function renderTabs(tabs, activeIndex) {
             tabsContainer.innerHTML = '';
 
             tabs.forEach(function(tab, index) {
@@ -301,41 +299,43 @@ const TOOLBAR_HTML: &str = r#"
                 button.appendChild(close);
                 tabsContainer.appendChild(button);
             });
+        }
+
+        window.__GRIMLEY_UI__ = {
+            handleEvent(event) {
+                switch (event.kind) {
+                    case 'url-changed':
+                        input.value = event.url;
+                        break;
+                    case 'nav-state':
+                        backButton.disabled = !event.back;
+                        forwardButton.disabled = !event.forward;
+                        break;
+                    case 'tabs-changed':
+                        renderTabs(event.tabs, event.active);
+                        break;
+                }
+            }
         };
     </script>
 </body>
 </html>
 "#;
 
-pub(crate) fn create_ui_webview(window: &Window, pending_action: PendingAction) -> WebView {
+pub(crate) fn create_ui_webview(window: &Window, pending_command: PendingCommand) -> WebView {
     WebViewBuilder::new_as_child(window)
         .with_bounds(toolbar_bounds(window))
         .with_html(TOOLBAR_HTML)
         .with_ipc_handler(move |request: Request<String>| {
-            if let Some(action) = parse_browser_action(request.body().trim()) {
-                *pending_action.lock().unwrap() = Some(action);
+            match UiCommand::parse(request.body().trim()) {
+                Ok(command) => {
+                    *pending_command.lock().unwrap() = Some(command);
+                }
+                Err(error) => {
+                    tracing::warn!("Falha ao interpretar comando da toolbar: {error}");
+                }
             }
         })
         .build()
         .unwrap()
-}
-
-fn parse_browser_action(message: &str) -> Option<BrowserAction> {
-    if message == "back" {
-        Some(BrowserAction::Back)
-    } else if message == "forward" {
-        Some(BrowserAction::Forward)
-    } else if message == "show-history" {
-        Some(BrowserAction::ShowHistory)
-    } else if message == "new-tab" {
-        Some(BrowserAction::NewTab(None))
-    } else if let Some(index) = message.strip_prefix("switch-tab:") {
-        index.parse().ok().map(BrowserAction::SwitchTab)
-    } else if let Some(index) = message.strip_prefix("close-tab:") {
-        index.parse().ok().map(BrowserAction::CloseTab)
-    } else if let Some(url) = message.strip_prefix("navigate:") {
-        Some(BrowserAction::Navigate(url.to_string()))
-    } else {
-        None
-    }
 }

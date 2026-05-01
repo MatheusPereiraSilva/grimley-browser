@@ -122,10 +122,7 @@ fn normalize_domain_pattern(pattern: &str) -> Option<String> {
         .unwrap_or(without_easylist_prefix);
     let without_path = without_scheme.split('/').next().unwrap_or(without_scheme);
     let without_suffix = without_path.strip_suffix('^').unwrap_or(without_path);
-    let normalized = without_suffix
-        .trim()
-        .trim_matches('.')
-        .to_ascii_lowercase();
+    let normalized = without_suffix.trim().trim_matches('.').to_ascii_lowercase();
 
     if normalized.is_empty() {
         None

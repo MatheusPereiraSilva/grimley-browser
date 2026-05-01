@@ -4,7 +4,7 @@ use tao::window::Window;
 use wry::WebView;
 
 use crate::{
-    app::{LoadedUrls, PdfRoutes, PendingAction},
+    app::{LoadedUrls, PdfRoutes, PendingCommand},
     browser::create_content_webview_with_url,
     internal_pages::{InternalPageKind, HISTORY_PAGE_URL, NEW_TAB_PAGE_URL},
     pdf::{open_pdf_workspace, PdfDocumentRef, PdfFetcherHandle, PdfWorkspaceMode, PDF_PAGE_URL},
@@ -15,7 +15,9 @@ use crate::{
 use super::BrowserHistory;
 
 pub(crate) enum TabLaunch {
-    Web { url: String },
+    Web {
+        url: String,
+    },
     Internal(InternalDocument),
     Pdf {
         origin_url: String,
@@ -39,7 +41,7 @@ impl TabLaunch {
     pub(crate) fn pdf(pdf_url: impl Into<String>) -> Self {
         Self::Pdf {
             origin_url: pdf_url.into(),
-            workspace_mode: PdfWorkspaceMode::Workspace,
+            workspace_mode: PdfWorkspaceMode::AnnotateOriginal,
         }
     }
 
@@ -151,7 +153,7 @@ impl TabContent {
 }
 
 impl Tab {
-    fn from_launch(id: usize, launch: TabLaunch, visible: bool) -> Self {
+    pub(crate) fn from_launch(id: usize, launch: TabLaunch, visible: bool) -> Self {
         let content = match launch {
             TabLaunch::Web { url } => TabContent::Web(WebDocument::new(url)),
             TabLaunch::Internal(document) => TabContent::Internal(document),
@@ -162,7 +164,10 @@ impl Tab {
         };
 
         let title = content.title();
-        let needs_render = matches!(content.kind(), TabContentKind::Internal | TabContentKind::Pdf);
+        let needs_render = matches!(
+            content.kind(),
+            TabContentKind::Internal | TabContentKind::Pdf
+        );
 
         Self {
             id,
@@ -263,7 +268,7 @@ impl Tab {
         self.content = TabContent::Pdf(open_pdf_workspace(
             self.id,
             origin_url,
-            PdfWorkspaceMode::Workspace,
+            PdfWorkspaceMode::AnnotateOriginal,
         ));
         self.lifecycle.needs_render = true;
         self.refresh_title();
@@ -278,7 +283,10 @@ impl Tab {
     }
 
     pub(crate) fn mark_needs_render(&mut self) {
-        if matches!(self.content_kind(), TabContentKind::Internal | TabContentKind::Pdf) {
+        if matches!(
+            self.content_kind(),
+            TabContentKind::Internal | TabContentKind::Pdf
+        ) {
             self.lifecycle.needs_render = true;
         }
     }
@@ -431,7 +439,7 @@ impl TabSession {
         window: &Window,
         id: usize,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         pdf_routes: PdfRoutes,
         pdf_fetcher: PdfFetcherHandle,
         shield_engine: ShieldEngineHandle,
@@ -445,7 +453,7 @@ impl TabSession {
             tab.load_target_url(),
             id,
             loaded_urls,
-            pending_action,
+            pending_command,
             Arc::clone(&pdf_routes),
             Arc::clone(&pdf_fetcher),
             Arc::clone(&shield_engine),
@@ -556,7 +564,7 @@ impl TabSession {
         &mut self,
         window: &Window,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         visible: bool,
     ) {
         if self.webview.is_none() {
@@ -565,7 +573,7 @@ impl TabSession {
                 self.load_target_url(),
                 self.id(),
                 loaded_urls,
-                pending_action,
+                pending_command,
                 Arc::clone(&self.pdf_routes),
                 Arc::clone(&self.pdf_fetcher),
                 Arc::clone(&self.shield_engine),
@@ -586,9 +594,7 @@ impl TabSession {
 
     pub(crate) fn unload_webview(&mut self) {
         if let Some(webview) = &self.webview {
-            webview
-                .set_visible(false)
-                .expect("Erro ao ocultar a aba");
+            webview.set_visible(false).expect("Erro ao ocultar a aba");
         }
 
         self.tab.set_visible(false);
@@ -631,9 +637,10 @@ impl TabSession {
         match &self.tab.content {
             TabContent::Web(document) => TabLaunch::regular(document.current_url().to_string()),
             TabContent::Internal(document) => TabLaunch::internal(document.kind()),
-            TabContent::Pdf(document) => {
-                TabLaunch::pdf_with_mode(document.origin_url().to_string(), document.workspace_mode())
-            }
+            TabContent::Pdf(document) => TabLaunch::pdf_with_mode(
+                document.origin_url().to_string(),
+                document.workspace_mode(),
+            ),
         }
     }
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::{annotations::PdfAnnotation, editor::PdfEditSession};
+use super::{annotations::PdfAnnotation, editor::PdfDerivedTextSession};
 
 pub(crate) const PDF_PAGE_URL: &str = "about:blank#grimley-pdf";
 
@@ -13,7 +13,9 @@ pub(crate) enum PdfSource {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PdfWorkspaceMode {
-    Workspace,
+    AnnotateOriginal,
+    DerivedText,
+    ExportDocument,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -36,7 +38,7 @@ pub(crate) struct PdfDocument {
     pub(crate) bytes: Vec<u8>,
     pub(crate) pages: Vec<PdfPage>,
     pub(crate) annotations: Vec<PdfAnnotation>,
-    pub(crate) edit_session: Option<PdfEditSession>,
+    pub(crate) derived_text_session: Option<PdfDerivedTextSession>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,7 +80,7 @@ impl PdfDocument {
             bytes,
             pages: Vec::new(),
             annotations: Vec::new(),
-            edit_session: None,
+            derived_text_session: None,
         }
     }
 
@@ -117,6 +119,28 @@ impl PdfWorkspaceState {
         self.workspace_mode
     }
 
+    pub(crate) fn workflow_title(&self) -> &'static str {
+        match self.workspace_mode {
+            PdfWorkspaceMode::AnnotateOriginal => "Anotar PDF original",
+            PdfWorkspaceMode::DerivedText => "Editar conteudo derivado",
+            PdfWorkspaceMode::ExportDocument => "Exportar novo documento",
+        }
+    }
+
+    pub(crate) fn workflow_copy(&self) -> &'static str {
+        match self.workspace_mode {
+            PdfWorkspaceMode::AnnotateOriginal => {
+                "Esta etapa cuida apenas das anotacoes presas ao PDF original. Edicao textual derivada e exportacao ficam em fluxos separados."
+            }
+            PdfWorkspaceMode::DerivedText => {
+                "Aqui voce trabalha no texto derivado do PDF, sem alterar as anotacoes ancoradas no original."
+            }
+            PdfWorkspaceMode::ExportDocument => {
+                "Esta etapa prepara a saida final em um novo documento a partir do material derivado."
+            }
+        }
+    }
+
     pub(crate) fn display_url(&self) -> &str {
         self.origin_url()
     }
@@ -124,5 +148,22 @@ impl PdfWorkspaceState {
     pub(crate) fn title(&self) -> String {
         let filename = self.origin_url().rsplit('/').next().unwrap_or("PDF");
         filename.chars().take(24).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PdfWorkspaceMode, PdfWorkspaceState};
+
+    #[test]
+    fn annotate_mode_describes_original_annotation_flow() {
+        let workspace = PdfWorkspaceState::new(
+            1,
+            "https://example.com/report.pdf",
+            PdfWorkspaceMode::AnnotateOriginal,
+        );
+
+        assert_eq!(workspace.workflow_title(), "Anotar PDF original");
+        assert!(workspace.workflow_copy().contains("fluxos separados"));
     }
 }

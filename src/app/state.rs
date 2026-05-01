@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{browser::BrowserAction, pdf::PdfWorkspaceState};
+use crate::{app::TabView, pdf::PdfWorkspaceState};
 
-pub(crate) type PendingAction = Arc<Mutex<Option<BrowserAction>>>;
+pub(crate) type PendingCommand = Arc<Mutex<Option<crate::app::UiCommand>>>;
 pub(crate) type LoadedUrls = Arc<Mutex<Vec<(usize, String)>>>;
 pub(crate) type PdfRoutes = Arc<Mutex<HashMap<usize, PdfWorkspaceState>>>;
 
@@ -14,11 +14,11 @@ pub(crate) struct UiSnapshot {
     pub(crate) url: String,
     pub(crate) can_go_back: bool,
     pub(crate) can_go_forward: bool,
-    pub(crate) tabs_json: String,
+    pub(crate) tabs: Vec<TabView>,
     pub(crate) active_index: usize,
 }
 
-pub(crate) fn create_pending_action() -> PendingAction {
+pub(crate) fn create_pending_command() -> PendingCommand {
     Arc::new(Mutex::new(None))
 }
 

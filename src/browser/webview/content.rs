@@ -7,8 +7,8 @@ use tao::window::Window;
 use wry::{http::Request, PageLoadEvent, WebView, WebViewBuilder};
 
 use crate::{
-    app::{LoadedUrls, PdfRoutes, PendingAction},
-    browser::{content_bounds, is_pdf_url, BrowserAction},
+    app::{LoadedUrls, PdfRoutes, PendingCommand, UiCommand},
+    browser::{content_bounds, is_pdf_url},
     internal_pages::internal_page_kind_for_url,
     pdf::PdfFetcherHandle,
     shield::ShieldEngineHandle,
@@ -35,7 +35,7 @@ pub(crate) fn create_content_webview_with_url(
     url: &str,
     tab_id: usize,
     loaded_urls: LoadedUrls,
-    pending_action: PendingAction,
+    pending_command: PendingCommand,
     pdf_routes: PdfRoutes,
     pdf_fetcher: PdfFetcherHandle,
     shield_engine: ShieldEngineHandle,
@@ -89,7 +89,7 @@ pub(crate) fn create_content_webview_with_url(
             }
         })
         .with_navigation_handler({
-            let pending_action = Arc::clone(&pending_action);
+            let pending_command = Arc::clone(&pending_command);
             let shield_engine = Arc::clone(&shield_engine);
             let current_page_url = Arc::clone(&current_page_url);
             move |next_url| {
@@ -100,10 +100,10 @@ pub(crate) fn create_content_webview_with_url(
                 if !decision.should_allow() {
                     false
                 } else if internal_page_kind_for_url(&next_url).is_some() {
-                    *pending_action.lock().unwrap() = Some(BrowserAction::Navigate(next_url));
+                    *pending_command.lock().unwrap() = Some(UiCommand::Navigate { url: next_url });
                     false
                 } else if !allow_pdf_navigation && is_pdf_url(&next_url) {
-                    *pending_action.lock().unwrap() = Some(BrowserAction::OpenPdf(next_url));
+                    *pending_command.lock().unwrap() = Some(UiCommand::OpenPdf { url: next_url });
                     false
                 } else {
                     true
@@ -120,7 +120,7 @@ pub(crate) fn create_content_webview_with_url(
             }
         })
         .with_new_window_req_handler({
-            let pending_action = Arc::clone(&pending_action);
+            let pending_command = Arc::clone(&pending_command);
             let shield_engine = Arc::clone(&shield_engine);
             let current_page_url = Arc::clone(&current_page_url);
             move |new_url| {
@@ -131,7 +131,8 @@ pub(crate) fn create_content_webview_with_url(
                 if !decision.should_allow() {
                     false
                 } else {
-                    *pending_action.lock().unwrap() = Some(BrowserAction::NewTab(Some(new_url)));
+                    *pending_command.lock().unwrap() =
+                        Some(UiCommand::NewTab { url: Some(new_url) });
                     false
                 }
             }

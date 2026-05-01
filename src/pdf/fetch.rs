@@ -44,7 +44,9 @@ impl PdfFetcher {
                 source: source.clone(),
                 response_tx,
             })
-            .map_err(|_| "O worker de PDF foi encerrado antes de concluir o download.".to_string())?;
+            .map_err(|_| {
+                "O worker de PDF foi encerrado antes de concluir o download.".to_string()
+            })?;
 
         response_rx
             .recv()

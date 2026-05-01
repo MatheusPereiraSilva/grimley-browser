@@ -16,10 +16,6 @@ pub(crate) enum PdfAnnotation {
         y: f32,
         text: String,
     },
-    Ink {
-        page: u32,
-        points: Vec<(f32, f32)>,
-    },
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -32,9 +28,7 @@ pub(crate) struct PdfSelection {
 impl PdfAnnotation {
     pub(crate) fn page(&self) -> u32 {
         match self {
-            Self::Highlight { page, .. } | Self::Note { page, .. } | Self::Ink { page, .. } => {
-                *page
-            }
+            Self::Highlight { page, .. } | Self::Note { page, .. } => *page,
         }
     }
 }
@@ -65,5 +59,7 @@ pub(crate) fn annotations_for_page<'a>(
     annotations: &'a [PdfAnnotation],
     page: u32,
 ) -> impl Iterator<Item = &'a PdfAnnotation> + 'a {
-    annotations.iter().filter(move |annotation| annotation.page() == page)
+    annotations
+        .iter()
+        .filter(move |annotation| annotation.page() == page)
 }

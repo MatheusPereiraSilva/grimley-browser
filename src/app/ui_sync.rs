@@ -1,8 +1,8 @@
 use wry::WebView;
 
-use crate::{browser::escape_js_string, tabs::BrowserTabs};
+use crate::tabs::BrowserTabs;
 
-use super::state::UiSnapshot;
+use super::{state::UiSnapshot, UiEvent};
 
 pub(crate) fn sync_ui(
     ui_webview: &WebView,
@@ -15,21 +15,20 @@ pub(crate) fn sync_ui(
         url: active_tab.display_url(),
         can_go_back: tabs.can_go_back(),
         can_go_forward: tabs.can_go_forward(),
-        tabs_json: tabs.tabs_json(),
+        tabs: tabs.tab_views(),
         active_index: tabs.active_index(),
     };
 
     let previous = last_snapshot.as_ref();
-    let mut script_parts = Vec::new();
+    let mut events = Vec::new();
 
     if previous
         .map(|state| state.url != snapshot.url)
         .unwrap_or(true)
     {
-        script_parts.push(format!(
-            "window.setUrl('{url}');",
-            url = escape_js_string(&snapshot.url),
-        ));
+        events.push(UiEvent::UrlChanged {
+            url: snapshot.url.clone(),
+        });
     }
 
     if previous
@@ -39,32 +38,34 @@ pub(crate) fn sync_ui(
         })
         .unwrap_or(true)
     {
-        script_parts.push(format!(
-            "window.setNavState({back}, {forward});",
-            back = snapshot.can_go_back,
-            forward = snapshot.can_go_forward,
-        ));
+        events.push(UiEvent::NavState {
+            back: snapshot.can_go_back,
+            forward: snapshot.can_go_forward,
+        });
     }
 
     if previous
-        .map(|state| {
-            state.tabs_json != snapshot.tabs_json || state.active_index != snapshot.active_index
-        })
+        .map(|state| state.tabs != snapshot.tabs || state.active_index != snapshot.active_index)
         .unwrap_or(true)
     {
-        script_parts.push(format!(
-            "window.setTabs(JSON.parse('{tabs}'), {active});",
-            tabs = escape_js_string(&snapshot.tabs_json),
-            active = snapshot.active_index,
-        ));
+        events.push(UiEvent::TabsChanged {
+            tabs: snapshot.tabs.clone(),
+            active: snapshot.active_index,
+        });
     }
 
-    if script_parts.is_empty() {
+    if events.is_empty() {
         return;
     }
 
     ui_webview
-        .evaluate_script(&script_parts.join(" "))
+        .evaluate_script(
+            &events
+                .iter()
+                .map(UiEvent::to_script)
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
         .expect("Erro ao sincronizar a interface");
 
     *last_snapshot = Some(snapshot);

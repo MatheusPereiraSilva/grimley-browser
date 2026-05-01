@@ -31,3 +31,41 @@ pub(crate) fn is_pdf_url(url: &str) -> bool {
         .unwrap_or(without_fragment);
     without_query.ends_with(".pdf")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_empty_input_to_home_page() {
+        assert_eq!(normalize_url("   "), HOME_PAGE_URL);
+    }
+
+    #[test]
+    fn normalizes_missing_scheme_to_https() {
+        assert_eq!(
+            normalize_url("example.com/docs"),
+            "https://example.com/docs"
+        );
+    }
+
+    #[test]
+    fn preserves_existing_scheme() {
+        assert_eq!(
+            normalize_url("http://localhost:3000"),
+            "http://localhost:3000"
+        );
+    }
+
+    #[test]
+    fn detects_pdf_urls_with_query_and_fragment() {
+        assert!(is_pdf_url(
+            "https://example.com/report.PDF?download=true#page=3"
+        ));
+    }
+
+    #[test]
+    fn ignores_non_pdf_urls() {
+        assert!(!is_pdf_url("https://example.com/report.pdf.html"));
+    }
+}

@@ -58,7 +58,7 @@ pub(crate) fn export_pdf_document(
 
 fn export_plain_text(document: &PdfDocument) -> PdfExportArtifact {
     let content = match document
-        .edit_session
+        .derived_text_session
         .as_ref()
         .and_then(|session| session.extracted_text())
     {
@@ -86,7 +86,7 @@ fn export_grimley_project(document: &PdfDocument) -> PdfExportArtifact {
         .collect::<Vec<_>>()
         .join(",");
     let extracted_text = document
-        .edit_session
+        .derived_text_session
         .as_ref()
         .and_then(|session| session.extracted_text())
         .map(|text| format!("\"{}\"", escape_json(text)))
@@ -135,9 +135,6 @@ fn annotation_to_text(annotation: &PdfAnnotation) -> String {
             )
         }
         PdfAnnotation::Note { page, text, .. } => format!("Nota pagina {}: {}", page, text),
-        PdfAnnotation::Ink { page, points } => {
-            format!("Tinta pagina {} com {} pontos", page, points.len())
-        }
     }
 }
 
@@ -183,17 +180,6 @@ fn annotation_to_json(annotation: &PdfAnnotation) -> String {
             x,
             y,
             escape_json(text)
-        ),
-        PdfAnnotation::Ink { page, points } => format!(
-            concat!(
-                "{{",
-                "\"type\":\"ink\",",
-                "\"page\":{},",
-                "\"pointCount\":{}",
-                "}}"
-            ),
-            page,
-            points.len()
         ),
     }
 }

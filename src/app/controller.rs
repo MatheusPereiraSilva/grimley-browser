@@ -21,8 +21,8 @@ use crate::{
 };
 
 use super::{
-    events::{handle_browser_action, handle_loaded_urls, handle_window_event},
-    state::{create_loaded_urls, create_pdf_routes, create_pending_action},
+    events::{handle_loaded_urls, handle_ui_command, handle_window_event},
+    state::{create_loaded_urls, create_pdf_routes, create_pending_command},
     ui_sync::sync_ui,
 };
 
@@ -37,7 +37,7 @@ pub(crate) fn run() {
         Default::default()
     });
 
-    let pending_action = create_pending_action();
+    let pending_command = create_pending_command();
     let loaded_urls = create_loaded_urls();
     let pdf_routes = create_pdf_routes();
     let pdf_fetcher = create_pdf_fetcher();
@@ -52,7 +52,7 @@ pub(crate) fn run() {
                 BrowserTabs::restore(
                     &window,
                     Arc::clone(&loaded_urls),
-                    Arc::clone(&pending_action),
+                    Arc::clone(&pending_command),
                     Arc::clone(&pdf_routes),
                     Arc::clone(&pdf_fetcher),
                     Arc::clone(&shield_engine),
@@ -64,7 +64,7 @@ pub(crate) fn run() {
             Ok(None) => BrowserTabs::new(
                 &window,
                 Arc::clone(&loaded_urls),
-                Arc::clone(&pending_action),
+                Arc::clone(&pending_command),
                 Arc::clone(&pdf_routes),
                 Arc::clone(&pdf_fetcher),
                 Arc::clone(&shield_engine),
@@ -76,7 +76,7 @@ pub(crate) fn run() {
                 BrowserTabs::new(
                     &window,
                     Arc::clone(&loaded_urls),
-                    Arc::clone(&pending_action),
+                    Arc::clone(&pending_command),
                     Arc::clone(&pdf_routes),
                     Arc::clone(&pdf_fetcher),
                     Arc::clone(&shield_engine),
@@ -89,7 +89,7 @@ pub(crate) fn run() {
         BrowserTabs::new(
             &window,
             Arc::clone(&loaded_urls),
-            Arc::clone(&pending_action),
+            Arc::clone(&pending_command),
             Arc::clone(&pdf_routes),
             Arc::clone(&pdf_fetcher),
             Arc::clone(&shield_engine),
@@ -97,7 +97,7 @@ pub(crate) fn run() {
             &settings.home_page_url,
         )
     };
-    let ui_webview = create_ui_webview(&window, Arc::clone(&pending_action));
+    let ui_webview = create_ui_webview(&window, Arc::clone(&pending_command));
     let mut visited_pages = load_history(&storage).unwrap_or_else(|error| {
         tracing::warn!("Falha ao carregar o historico persistido: {error}");
         VisitedPages::default()
@@ -112,7 +112,7 @@ pub(crate) fn run() {
             &storage,
             &window,
             Arc::clone(&loaded_urls),
-            Arc::clone(&pending_action),
+            Arc::clone(&pending_command),
         );
     }
 
@@ -131,14 +131,14 @@ pub(crate) fn run() {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        if let Some(action) = pending_action.lock().unwrap().take() {
-            handle_browser_action(
-                action,
+        if let Some(command) = pending_command.lock().unwrap().take() {
+            handle_ui_command(
+                command,
                 &mut browser_tabs,
                 &window,
                 &ui_webview,
                 &loaded_urls,
-                &pending_action,
+                &pending_command,
                 &pdf_routes,
                 &pdf_fetcher,
                 &shield_engine,
@@ -157,7 +157,7 @@ pub(crate) fn run() {
             &window,
             &ui_webview,
             &loaded_urls,
-            &pending_action,
+            &pending_command,
             &mut visited_pages,
             &mut last_ui_snapshot,
             &shield_engine,

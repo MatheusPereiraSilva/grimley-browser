@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{HISTORY_PAGE_URL, InternalPageRenderer, NEW_TAB_PAGE_URL, SHIELD_PAGE_URL};
+use super::{InternalPageRenderer, HISTORY_PAGE_URL, NEW_TAB_PAGE_URL, SHIELD_PAGE_URL};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct HistoryVisit {

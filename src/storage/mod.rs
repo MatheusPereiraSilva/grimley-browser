@@ -3,10 +3,7 @@ pub(crate) mod history;
 pub(crate) mod session;
 pub(crate) mod settings;
 
-use std::{
-    fs,
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 use directories::ProjectDirs;
 use serde::{de::DeserializeOwned, Serialize};
@@ -57,8 +54,10 @@ pub(crate) fn create_app_storage() -> Result<AppStorage, StorageError> {
 
 impl AppStorage {
     pub(crate) fn new() -> Result<Self, StorageError> {
-        let root_dir = resolve_storage_root();
+        Self::from_root_dir(resolve_storage_root())
+    }
 
+    pub(crate) fn from_root_dir(root_dir: PathBuf) -> Result<Self, StorageError> {
         fs::create_dir_all(&root_dir).map_err(|source| StorageError::CreateDir {
             path: root_dir.clone(),
             source,
@@ -103,7 +102,11 @@ impl AppStorage {
         Ok(Some(value))
     }
 
-    pub(crate) fn write_json<T>(&self, path: &std::path::Path, value: &T) -> Result<(), StorageError>
+    pub(crate) fn write_json<T>(
+        &self,
+        path: &std::path::Path,
+        value: &T,
+    ) -> Result<(), StorageError>
     where
         T: Serialize,
     {

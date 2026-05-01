@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tao::window::Window;
 
 use crate::{
-    app::{LoadedUrls, PdfRoutes, PendingAction},
+    app::{LoadedUrls, PdfRoutes, PendingCommand, TabView},
     pdf::PdfFetcherHandle,
     shield::ShieldEngineHandle,
     storage::AppStorage,
@@ -21,7 +21,7 @@ impl BrowserTabs {
     pub(crate) fn new(
         window: &Window,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         pdf_routes: PdfRoutes,
         pdf_fetcher: PdfFetcherHandle,
         shield_engine: ShieldEngineHandle,
@@ -31,7 +31,7 @@ impl BrowserTabs {
         Self::restore(
             window,
             loaded_urls,
-            pending_action,
+            pending_command,
             pdf_routes,
             pdf_fetcher,
             shield_engine,
@@ -44,7 +44,7 @@ impl BrowserTabs {
     pub(crate) fn restore(
         window: &Window,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         pdf_routes: PdfRoutes,
         pdf_fetcher: PdfFetcherHandle,
         shield_engine: ShieldEngineHandle,
@@ -66,7 +66,7 @@ impl BrowserTabs {
                     window,
                     index,
                     Arc::clone(&loaded_urls),
-                    Arc::clone(&pending_action),
+                    Arc::clone(&pending_command),
                     Arc::clone(&pdf_routes),
                     Arc::clone(&pdf_fetcher),
                     Arc::clone(&shield_engine),
@@ -120,7 +120,7 @@ impl BrowserTabs {
         &mut self,
         window: &Window,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         pdf_routes: PdfRoutes,
         pdf_fetcher: PdfFetcherHandle,
         shield_engine: ShieldEngineHandle,
@@ -136,7 +136,7 @@ impl BrowserTabs {
             window,
             self.next_tab_id,
             loaded_urls,
-            pending_action,
+            pending_command,
             pdf_routes,
             pdf_fetcher,
             shield_engine,
@@ -164,7 +164,7 @@ impl BrowserTabs {
         &mut self,
         window: &Window,
         loaded_urls: LoadedUrls,
-        pending_action: PendingAction,
+        pending_command: PendingCommand,
         pdf_routes: PdfRoutes,
         pdf_fetcher: PdfFetcherHandle,
         shield_engine: ShieldEngineHandle,
@@ -183,7 +183,7 @@ impl BrowserTabs {
                 window,
                 self.next_tab_id,
                 loaded_urls,
-                pending_action,
+                pending_command,
                 pdf_routes,
                 pdf_fetcher,
                 shield_engine,
@@ -225,32 +225,17 @@ impl BrowserTabs {
         self.active_tab().can_go_forward()
     }
 
-    pub(crate) fn tabs_json(&self) -> String {
-        let entries = self
-            .tabs
+    pub(crate) fn tab_views(&self) -> Vec<TabView> {
+        self.tabs
             .iter()
-            .map(|tab| {
-                format!(
-                    r#"{{"label":"{}","url":"{}"}}"#,
-                    escape_json(tab.title()),
-                    escape_json(&tab.display_url())
-                )
+            .map(|tab| TabView {
+                label: tab.title().to_string(),
+                url: tab.display_url(),
             })
-            .collect::<Vec<_>>()
-            .join(",");
-
-        format!("[{}]", entries)
+            .collect()
     }
 
     pub(crate) fn session_launches(&self) -> Vec<TabLaunch> {
         self.tabs.iter().map(TabSession::session_launch).collect()
     }
-}
-
-fn escape_json(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
 }

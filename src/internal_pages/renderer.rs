@@ -1,7 +1,7 @@
 use tao::window::Window;
 
 use crate::{
-    app::{LoadedUrls, PendingAction},
+    app::{LoadedUrls, PendingCommand},
     browser::escape_js_string,
     pdf::render_pdf_workspace_html,
     shield::ShieldEngineHandle,
@@ -14,6 +14,24 @@ use super::{
     VisitedPages,
 };
 
+pub(crate) fn render_internal_page_html(
+    kind: InternalPageKind,
+    visited_pages: &VisitedPages,
+    shield_engine: ShieldEngineHandle,
+) -> String {
+    match kind {
+        InternalPageKind::NewTab => render_new_tab_html(),
+        InternalPageKind::History => {
+            let renderer = HistoryPage::new(visited_pages.entries());
+            renderer.render()
+        }
+        InternalPageKind::Shield => {
+            let renderer = ShieldPage::new(shield_engine);
+            renderer.render()
+        }
+    }
+}
+
 pub(crate) fn render_internal_page(
     tab: &mut TabSession,
     visited_pages: &VisitedPages,
@@ -21,16 +39,18 @@ pub(crate) fn render_internal_page(
     storage: &AppStorage,
     window: &Window,
     loaded_urls: LoadedUrls,
-    pending_action: PendingAction,
+    pending_command: PendingCommand,
 ) {
-    tab.ensure_webview(window, loaded_urls, pending_action, true);
+    tab.ensure_webview(window, loaded_urls, pending_command, true);
 
     let Some(render_request) = tab.take_render_request() else {
         return;
     };
 
     let html = match render_request {
-        TabRenderRequest::Internal { kind } => render_page(kind, visited_pages, shield_engine),
+        TabRenderRequest::Internal { kind } => {
+            render_internal_page_html(kind, visited_pages, shield_engine)
+        }
         TabRenderRequest::Pdf(document) => {
             let initial_annotations_json = load_annotations_json(storage, document.origin_url())
                 .unwrap_or_else(|error| {
@@ -56,20 +76,39 @@ pub(crate) fn render_internal_page(
     tab.mark_rendered();
 }
 
-fn render_page(
-    kind: InternalPageKind,
-    visited_pages: &VisitedPages,
-    shield_engine: ShieldEngineHandle,
-) -> String {
-    match kind {
-        InternalPageKind::NewTab => render_new_tab_html(),
-        InternalPageKind::History => {
-            let renderer = HistoryPage::new(visited_pages.entries());
-            renderer.render()
-        }
-        InternalPageKind::Shield => {
-            let renderer = ShieldPage::new(shield_engine);
-            renderer.render()
-        }
+#[cfg(test)]
+mod tests {
+    use crate::{
+        internal_pages::{HistoryVisit, InternalPageKind},
+        shield::create_shield_engine,
+    };
+
+    use super::*;
+
+    #[test]
+    fn renders_new_tab_internal_page() {
+        let html = render_internal_page_html(
+            InternalPageKind::NewTab,
+            &VisitedPages::default(),
+            create_shield_engine(),
+        );
+
+        assert!(html.contains("<title>Nova aba</title>"));
+        assert!(html.contains("Digite uma URL na barra acima"));
+    }
+
+    #[test]
+    fn renders_history_internal_page_with_escaped_urls() {
+        let visited_pages = VisitedPages::from_entries(vec![HistoryVisit {
+            url: "https://example.com/<grimley>?q=1&x=2".to_string(),
+        }]);
+        let html = render_internal_page_html(
+            InternalPageKind::History,
+            &visited_pages,
+            create_shield_engine(),
+        );
+
+        assert!(html.contains("<title>Historico</title>"));
+        assert!(html.contains("https://example.com/&lt;grimley&gt;?q=1&amp;x=2"));
     }
 }

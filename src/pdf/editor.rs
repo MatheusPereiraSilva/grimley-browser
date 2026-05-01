@@ -1,11 +1,5 @@
 #![allow(dead_code)]
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PdfEditMode {
-    AnnotationOnly,
-    DerivedText,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PdfTextBlock {
     page: u32,
@@ -13,8 +7,7 @@ pub(crate) struct PdfTextBlock {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PdfEditSession {
-    mode: PdfEditMode,
+pub(crate) struct PdfDerivedTextSession {
     extracted_text: Option<String>,
     blocks: Vec<PdfTextBlock>,
 }
@@ -36,28 +29,12 @@ impl PdfTextBlock {
     }
 }
 
-impl PdfEditSession {
-    pub(crate) fn annotation_only() -> Self {
+impl PdfDerivedTextSession {
+    pub(crate) fn new(extracted_text: impl Into<String>, blocks: Vec<PdfTextBlock>) -> Self {
         Self {
-            mode: PdfEditMode::AnnotationOnly,
-            extracted_text: None,
-            blocks: Vec::new(),
-        }
-    }
-
-    pub(crate) fn derived_text(
-        extracted_text: impl Into<String>,
-        blocks: Vec<PdfTextBlock>,
-    ) -> Self {
-        Self {
-            mode: PdfEditMode::DerivedText,
             extracted_text: Some(extracted_text.into()),
             blocks,
         }
-    }
-
-    pub(crate) fn mode(&self) -> PdfEditMode {
-        self.mode
     }
 
     pub(crate) fn extracted_text(&self) -> Option<&str> {

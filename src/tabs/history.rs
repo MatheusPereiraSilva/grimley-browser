@@ -60,3 +60,44 @@ impl BrowserHistory {
         !self.forward_stack.is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::BrowserHistory;
+
+    #[test]
+    fn tracks_back_and_forward_navigation() {
+        let mut history = BrowserHistory::new("https://grimley.dev");
+
+        history.navigate_to("https://example.com");
+        history.navigate_to("https://docs.rs");
+
+        assert_eq!(history.go_back().as_deref(), Some("https://example.com"));
+        assert_eq!(history.go_back().as_deref(), Some("https://grimley.dev"));
+        assert_eq!(history.go_forward().as_deref(), Some("https://example.com"));
+        assert_eq!(history.go_forward().as_deref(), Some("https://docs.rs"));
+    }
+
+    #[test]
+    fn clears_forward_stack_after_new_navigation() {
+        let mut history = BrowserHistory::new("https://grimley.dev");
+
+        history.navigate_to("https://example.com");
+        history.navigate_to("https://docs.rs");
+        history.go_back();
+        history.navigate_to("https://rust-lang.org");
+
+        assert!(history.can_go_back());
+        assert!(!history.can_go_forward());
+    }
+
+    #[test]
+    fn does_not_duplicate_current_url_when_navigating_to_same_page() {
+        let mut history = BrowserHistory::new("https://grimley.dev");
+
+        history.navigate_to("https://grimley.dev");
+
+        assert!(!history.can_go_back());
+        assert!(!history.can_go_forward());
+    }
+}

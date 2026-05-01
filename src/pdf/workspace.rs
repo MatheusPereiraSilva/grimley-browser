@@ -16,12 +16,21 @@ pub(crate) fn render_pdf_workspace_html(
     initial_annotations_json: &str,
 ) -> String {
     let pdf_asset_url = pdf_asset_url(tab_id);
-    let _workspace_mode = pdf_document.workspace_mode();
+    let workflow_title = pdf_document.workflow_title();
+    let workflow_copy = pdf_document.workflow_copy();
     let _document_id = pdf_document.document_id();
 
     PDF_WORKSPACE_TEMPLATE
-        .replace("__GRIMLEY_PDF_URL__", &escape_html(pdf_document.origin_url()))
+        .replace(
+            "__GRIMLEY_PDF_URL__",
+            &escape_html(pdf_document.origin_url()),
+        )
         .replace("__GRIMLEY_PDF_ASSET_URL__", &escape_html(&pdf_asset_url))
+        .replace(
+            "__GRIMLEY_PDF_WORKFLOW_TITLE__",
+            &escape_html(workflow_title),
+        )
+        .replace("__GRIMLEY_PDF_WORKFLOW_COPY__", &escape_html(workflow_copy))
         .replace(
             "__GRIMLEY_PDF_INITIAL_ANNOTATIONS__",
             &escape_js_string(initial_annotations_json),

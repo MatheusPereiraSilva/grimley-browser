@@ -121,7 +121,9 @@ fn classify_resource_type(url: &str, context: ShieldRequestContext) -> ShieldRes
         ShieldResourceType::Pdf
     } else if has_extension(
         &path,
-        &["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "avif"],
+        &[
+            "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "avif",
+        ],
     ) {
         ShieldResourceType::Image
     } else if has_extension(&path, &["js", "mjs", "cjs"]) {
@@ -130,7 +132,9 @@ fn classify_resource_type(url: &str, context: ShieldRequestContext) -> ShieldRes
         ShieldResourceType::Stylesheet
     } else if has_extension(
         &path,
-        &["mp3", "mp4", "wav", "ogg", "ogv", "webm", "mov", "avi", "m4a", "flac"],
+        &[
+            "mp3", "mp4", "wav", "ogg", "ogv", "webm", "mov", "avi", "m4a", "flac",
+        ],
     ) {
         ShieldResourceType::Media
     } else if has_extension(&path, &["woff", "woff2", "ttf", "otf", "eot"]) {
